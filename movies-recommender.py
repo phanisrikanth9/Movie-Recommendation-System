@@ -8,8 +8,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pickle
 
 # Loading the datasets
-movies = pd.read_csv(r'c:\Users\SRIKANTH\Desktop\MRS\tmdb_5000_movies.csv')
-credits = pd.read_csv(r'c:\Users\SRIKANTH\Desktop\MRS\tmdb_5000_credits.csv')
+movies = pd.read_csv(r'')#copy the path of the tmdb_5000_movies.csv and paste it here
+credits = pd.read_csv(r'')#copy the path of the tmdb_5000_credits.csv and paste it here
 
 # Preview the first few rows of the movies dataset
 movies.head()
