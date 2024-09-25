@@ -52,8 +52,8 @@ def stem(text):
     return " ".join(y)
 
 # Loading the datasets
-movies = pd.read_csv(r'c:\Users\SRIKANTH\Desktop\MRS\tmdb_5000_movies.csv')
-credits = pd.read_csv(r'c:\Users\SRIKANTH\Desktop\MRS\tmdb_5000_credits.csv')
+movies = pd.read_csv(r'')#copy the path of the tmdb_5000_movies.csv and paste it here
+credits = pd.read_csv(r'')#copy the path of the tmdb_5000_credits.csv and paste it here
 
 # Merging the datasets on title
 movies = movies.merge(credits, on='title')
