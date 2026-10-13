@@ -1,100 +1,75 @@
-import streamlit as st 
-import pickle
-import pandas as pd
-import requests
+"""Streamlit app for the movie recommender.
 
-# Function to fetch the movie poster using the TMDB API
-def fetch_poster(movie_id):
-    response = requests.get(f'https://api.themoviedb.org/3/movie/{movie_id}?api_key=c4c9897af1ecb7aa91be175d81e5694f&language=en-US')
-    data = response.json()
-    return f"https://image.tmdb.org/t/p/w185/{data['poster_path']}"
+    streamlit run app.py
 
-# Function to fetch the movie rating using the TMDB API
-def fetch_rating(movie_id):
-    response = requests.get(f'https://api.themoviedb.org/3/movie/{movie_id}?api_key=c4c9897af1ecb7aa91be175d81e5694f&language=en-US')
-    data = response.json()
-    return data['vote_average']
-
-# Loading the precomputed movies data and similarity matrix
-movies_dict = pickle.load(open('movies_dict.pkl', 'rb'))
-similarity = pickle.load(open('similarity.pkl', 'rb'))
-movies = pd.DataFrame(movies_dict)
-
-# Extract unique genres
-genres = sorted(list(set([genre for sublist in movies['genres'] for genre in sublist])))
-
-# Recommendation function
-def recommend(movie):
-    movie_index = movies[movies['title'] == movie].index[0]
-    distances = similarity[movie_index]
-    movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
-
-    recommended_movies = []
-    recommended_movies_posters = []
-    movie_ratings = []
-    for i in movies_list:
-        movie_id = movies.iloc[i[0]].movie_id
-        recommended_movies.append(movies.iloc[i[0]].title)
-        recommended_movies_posters.append(fetch_poster(movie_id))
-        movie_ratings.append(fetch_rating(movie_id))
-    
-    return recommended_movies, recommended_movies_posters, movie_ratings
-
-# Streamlit UI
-st.set_page_config(page_title="Movie Recommender", page_icon="🎥", layout="wide")
-st.title('🎬 Movie Recommender System')
-st.markdown('<style>h2{color: #ff6347;} h3{color: #4682b4;} .recommend-button>button{background-color: #87CEEB; color: white;}</style>', unsafe_allow_html=True)
-st.markdown('<h2 style="color: #87CEEB;">Find Your Next Favorite Movie</h2>', unsafe_allow_html=True)
-
-# Genre selection dropdown
-selected_genre = st.selectbox(
-   "Select a genre",
-   genres,
-   key='genre_selector',
-   index=0
-)
-
-# Filter movies based on the selected genre
-filtered_movies = movies[movies['genres'].apply(lambda x: selected_genre in x)]
-
-# Movie selection dropdown based on the selected genre
-selected_movie_name = st.selectbox(
-   "Select a movie from the chosen genre",
-   filtered_movies['title'].values,
-   key='movie_selector'
-)
-
-# Recommendation button
-if st.button('Recommend'):
-    names, posters, ratings = recommend(selected_movie_name)
-    st.write('### Movies you may also like:')
-
-    # Displaying recommended movies in columns
-    cols = st.columns(5)
-    for col, name, poster, rating in zip(cols, names, posters, ratings):
-        with col:
-            st.image(poster, use_column_width=True)
-            st.markdown(f"**{name}**")
-            st.markdown(f"Rating: {rating}")
-
-# Footer
-# Footer
-st.markdown("---")
-footer = """
-<style>
-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
- background-color: #000000; /* Black color */
-    text-align: center;
-    padding: 10px;
-}
-</style>
-<footer>
-    Developed by <b>Phani Srikanth Samayam</b> | 
-    <a href='https://www.linkedin.com/in/phani-srikanth-samayam-70942926a/' target='_blank'>LinkedIn</a>
-</footer>
+Posters are optional: put a TMDB API key in .streamlit/secrets.toml
+(TMDB_API_KEY = "...") or the TMDB_API_KEY environment variable.
+Without a key the app still works and shows text cards.
 """
-st.markdown(footer, unsafe_allow_html=True)
+import os
+
+import requests
+import streamlit as st
+
+from recommender import load_artifacts, recommend
+
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
+
+
+@st.cache_data
+def films():
+    return load_artifacts()
+
+
+def tmdb_key():
+    try:
+        return st.secrets.get("TMDB_API_KEY") or os.environ.get("TMDB_API_KEY")
+    except Exception:  # no secrets.toml
+        return os.environ.get("TMDB_API_KEY")
+
+
+@st.cache_data(show_spinner=False, ttl=24 * 3600)
+def poster(movie_id, key):
+    try:
+        r = requests.get(f"https://api.themoviedb.org/3/movie/{movie_id}",
+                         params={"api_key": key}, timeout=5)
+        path = r.json().get("poster_path")
+        return f"https://image.tmdb.org/t/p/w342{path}" if path else None
+    except requests.RequestException:
+        return None
+
+
+data = films()
+key = tmdb_key()
+
+st.title("Movie Recommender")
+st.caption("Content-based recommendations over 4,800 TMDB films: genres, director, cast, "
+           "keywords and plot, compared with TF-IDF and cosine similarity.")
+
+genres = sorted({g for f in data for g in f["g"]})
+left, right = st.columns([1, 2])
+with left:
+    genre = st.selectbox("Filter by genre (optional)", ["All genres"] + genres)
+pool = [f for f in data if genre == "All genres" or genre in f["g"]]
+with right:
+    title = st.selectbox("Pick a movie you like", [f"{f['t']} ({f['y']})" for f in pool])
+count = st.slider("How many recommendations", 5, 20, 10)
+
+src, recs = recommend(title.rsplit(" (", 1)[0], data, n=count)
+st.subheader(f"Because you liked {src['t']}")
+st.write(f"{src['y']} · {', '.join(src['g'])} · directed by {src['d'] or 'unknown'} · ★ {src['r']}")
+
+cols = st.columns(5)
+for i, (film, score, why) in enumerate(recs):
+    with cols[i % 5]:
+        url = poster(film["id"], key) if key else None
+        if url:
+            st.image(url, use_container_width=True)
+        st.markdown(f"**{film['t']}** ({film['y']})")
+        st.caption(f"★ {film['r']} · match {score:.0%}")
+        if why:
+            st.caption("Why: " + "; ".join(why))
+
+st.divider()
+st.caption("Data: TMDB 5000 Movie Dataset (Kaggle). Built by Phani Srikanth Samayam · "
+           "[GitHub](https://github.com/phanisrikanth9/Movie-Recommendation-System)")

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Movie Recommender</title>
+<meta name="description" content="Pick a film you like and get ten similar ones, with the reasons each was matched. Content-based recommender over 4,800 TMDB movies.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a cinema marquee + running order. Search on top, the chosen film as a wide "now showing" strip,
+   recommendations as a numbered running order (rank IS information here). */
+:root {
+  --bg: #f2f3f5; --surface: #ffffff; --ink: #14161a; --muted: #5f6570; --line: #dfe2e7;
+  --accent: #c8102e; --accent-soft: rgba(200, 16, 46, 0.08); --gold: #a0700f;
+  --font-display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --font-body: "Manrope", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1114; --surface: #181b20; --ink: #eef0f3; --muted: #9aa1ab; --line: #2b3038; --accent: #ff7a6b; --accent-soft: rgba(255, 122, 107, 0.1); --gold: #e3b450; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1114; --surface: #181b20; --ink: #eef0f3; --muted: #9aa1ab; --line: #2b3038; --accent: #ff7a6b; --accent-soft: rgba(255, 122, 107, 0.1); --gold: #e3b450; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-body); }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 20px; }
+header { padding-block: 44px 20px; display: grid; gap: 10px; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0; }
+h1 { font-family: var(--font-display); font-weight: 900; font-size: clamp(40px, 7vw, 72px); line-height: 0.95; letter-spacing: 0; text-transform: uppercase; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 60ch; font-size: 16px; }
+
+.search { position: relative; margin-block: 18px 8px; }
+.search input { width: 100%; font: inherit; font-size: 18px; padding: 14px 16px 14px 46px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.search input:focus { border-color: var(--accent); outline: none; }
+.search svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; color: var(--muted); }
+.suggest { position: absolute; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; list-style: none; margin: 0; padding: 6px; z-index: 5; box-shadow: 0 12px 30px rgba(0,0,0,.12); max-height: 340px; overflow: auto; }
+.suggest li { padding: 9px 12px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+.suggest li[aria-selected="true"], .suggest li:hover { background: var(--accent-soft); }
+.suggest small { color: var(--muted); white-space: nowrap; }
+.quick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 13.5px; }
+.quick button { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.quick button:hover { border-color: var(--accent); color: var(--accent); }
+
+.now { margin-top: 28px; background: var(--ink); color: var(--bg); border-radius: 14px; padding: 22px 24px; display: grid; gap: 8px; }
+.now .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: .7; font-weight: 700; }
+.now h2 { font-family: var(--font-display); font-size: clamp(26px, 4vw, 36px); margin: 0; line-height: 1.1; }
+.now .meta { font-size: 14px; opacity: .85; }
+.now p { margin: 4px 0 0; max-width: 70ch; opacity: .85; font-size: 14.5px; }
+
+.list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+.item { display: grid; grid-template-columns: 44px minmax(0, 1fr) 120px; gap: 16px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+@media (max-width: 640px) { .item { grid-template-columns: 32px minmax(0, 1fr); } .item .score { grid-column: 2; } }
+.rank { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--muted); line-height: 1; font-variant-numeric: tabular-nums; }
+.item h3 { margin: 0; font-size: 17px; font-weight: 700; }
+.item h3 button { all: unset; cursor: pointer; }
+.item h3 button:hover { color: var(--accent); text-decoration: underline; }
+.item h3 span { color: var(--muted); font-weight: 500; }
+.item .sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.why { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.why span { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); }
+.why span.strong { background: var(--accent); color: #fff; }
+.score { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); text-align: right; }
+.score b { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.star { color: var(--gold); }
+
+.about { margin-block: 48px 0; padding-block: 28px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 760px) { .about { grid-template-columns: minmax(0, 1fr); } }
+.about h3 { font-family: var(--font-display); font-size: 19px; margin: 0 0 6px; }
+.about p { margin: 0; color: var(--muted); font-size: 14px; }
+.about b { color: var(--ink); font-variant-numeric: tabular-nums; }
+footer { padding-block: 20px 36px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+.loading { padding: 40px 0; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Movie Recommender</p>
+    <h1>Liked a film? Here are ten more.</h1>
+    <p>Pick any of 4,800 movies. You get the closest matches by genre, director, cast, themes and plot, and the reasons each one was picked.</p>
+  </header>
+
+  <div class="search" role="combobox" aria-expanded="false" aria-haspopup="listbox" id="combo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q" type="text" autocomplete="off" placeholder="Search a movie, e.g. Inception" aria-label="Search a movie" aria-controls="suggest">
+    <ul class="suggest" id="suggest" role="listbox" hidden></ul>
+  </div>
+  <div class="quick" id="quick"><span>Try:</span></div>
+
+  <div class="loading" id="loading">Loading 4,800 films…</div>
+  <section class="now" id="now" hidden aria-live="polite">
+    <span class="label">Because you liked</span>
+    <h2 id="nowTitle"></h2>
+    <span class="meta" id="nowMeta"></span>
+    <p id="nowOverview"></p>
+  </section>
+  <ol class="list" id="list"></ol>
+
+  <section class="about">
+    <div><h3>How it works</h3><p>Each film becomes a document of its genres, keywords, top three cast, director and plot. Documents are stemmed, weighted with TF-IDF and compared with cosine similarity.</p></div>
+    <div><h3>What changed</h3><p>Weighting the fields raised same-director matches in the top 10 from <b>15%</b> to <b>82%</b>, and genre overlap from <b>88.5%</b> to <b>90.5%</b>. Only each film's 20 nearest neighbours are stored: 3 MB instead of a 185 MB matrix.</p></div>
+    <div><h3>Data</h3><p>TMDB 5000 Movie Dataset from Kaggle. Everything runs in your browser; there is no server.</p></div>
+  </section>
+</div>
+<footer><div class="wrap">Built by Phani Srikanth Samayam · <a href="https://github.com/phanisrikanth9/Movie-Recommendation-System">Source on GitHub</a> · <a href="https://phanisrikanth9.github.io/Phani-Portfolio/">Portfolio</a></div></footer>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let films = [], byTitle = new Map(), active = -1, shown = [];
+
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+  function reasons(a, b) {
+    const out = [];
+    if (a.d && a.d === b.d) out.push(["Same director: " + a.d, true]);
+    const cast = a.c.filter((c) => b.c.includes(c));
+    if (cast.length) out.push(["Also stars " + cast.join(", "), true]);
+    const g = a.g.filter((x) => b.g.includes(x));
+    if (g.length) out.push([g.join(" · "), false]);
+    const k = a.k.filter((x) => b.k.includes(x)).slice(0, 3);
+    if (k.length) out.push(["Themes: " + k.join(", "), false]);
+    return out;
+  }
+
+  function show(i) {
+    const f = films[i];
+    $("now").hidden = false;
+    $("nowTitle").textContent = `${f.t} (${f.y || "—"})`;
+    $("nowMeta").textContent = [f.g.join(", "), f.d ? "Directed by " + f.d : "", "★ " + f.r].filter(Boolean).join(" · ");
+    $("nowOverview").textContent = f.o;
+    const list = $("list"); list.replaceChildren();
+    const top = f.n[0] ? f.n[0][1] : 1;
+    f.n.slice(0, 10).forEach(([j, s], r) => {
+      const m = films[j];
+      const li = el("li", "item");
+      li.append(el("span", "rank", String(r + 1)));
+      const mid = el("div");
+      const h = el("h3"); const b = el("button", null, m.t); b.type = "button";
+      b.addEventListener("click", () => pick(j)); h.append(b, " ", el("span", null, `(${m.y || "—"})`));
+      mid.append(h, el("div", "sub", [m.g.slice(0, 3).join(", "), m.d ? "dir. " + m.d : ""].filter(Boolean).join(" · ")));
+      const why = el("div", "why");
+      reasons(f, m).forEach(([t, strong]) => why.append(el("span", strong ? "strong" : "", t)));
+      mid.append(why);
+      const sc = el("div", "score");
+      const bar = el("div", "bar"); const fill = el("i"); fill.style.width = Math.round((s / top) * 100) + "%"; bar.append(fill);
+      sc.append(el("b", null, Math.round(s * 100) + "% match"), bar);
+      const star = el("span"); star.append(el("span", "star", "★ "), String(m.r)); sc.append(star);
+      li.append(mid, sc);
+      list.append(li);
+    });
+  }
+
+  function pick(i) {
+    $("q").value = films[i].t; closeSuggest(); show(i);
+    try { history.replaceState(null, "", "#" + films[i].id); } catch (e) {}
+    $("now").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
+
+  function norm(s) { return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, ""); }
+
+  function suggest() {
+    const q = norm($("q").value.trim());
+    const ul = $("suggest");
+    if (!q) return closeSuggest();
+    const starts = [], has = [];
+    films.forEach((f, i) => { const t = f._n; if (t.startsWith(q)) starts.push(i); else if (t.includes(q)) has.push(i); });
+    shown = starts.concat(has).slice(0, 8);
+    ul.replaceChildren(...shown.map((i, k) => {
+      const li = el("li"); li.setAttribute("role", "option"); li.id = "opt" + k;
+      li.append(el("span", null, films[i].t), el("small", null, films[i].y ? String(films[i].y) : ""));
+      li.addEventListener("mousedown", (e) => { e.preventDefault(); pick(i); });
+      return li;
+    }));
+    if (!shown.length) ul.replaceChildren(el("li", null, "No match in the dataset"));
+    active = -1; ul.hidden = false; $("combo").setAttribute("aria-expanded", "true");
+  }
+  function closeSuggest() { $("suggest").hidden = true; $("combo").setAttribute("aria-expanded", "false"); active = -1; }
+  function highlight() { [...$("suggest").children].forEach((li, k) => li.setAttribute("aria-selected", k === active ? "true" : "false")); }
+
+  $("q").addEventListener("input", suggest);
+  $("q").addEventListener("blur", () => setTimeout(closeSuggest, 100));
+  $("q").addEventListener("keydown", (e) => {
+    if ($("suggest").hidden || !shown.length) return;
+    if (e.key === "ArrowDown") { active = Math.min(active + 1, shown.length - 1); highlight(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); highlight(); e.preventDefault(); }
+    else if (e.key === "Enter") { pick(shown[Math.max(active, 0)]); e.preventDefault(); }
+    else if (e.key === "Escape") closeSuggest();
+  });
+
+  fetch("artifacts/movies.json").then((r) => r.json()).then((data) => {
+    films = data;
+    films.forEach((f, i) => { f._n = norm(f.t); if (!byTitle.has(f._n)) byTitle.set(f._n, i); });
+    $("loading").hidden = true;
+    ["The Dark Knight", "Toy Story", "Avatar", "The Notebook", "Interstellar", "The Avengers"].forEach((t) => {
+      const i = byTitle.get(norm(t)); if (i == null) return;
+      const b = el("button", null, t); b.type = "button"; b.addEventListener("click", () => pick(i)); $("quick").append(b);
+    });
+    const fromHash = films.findIndex((f) => "#" + f.id === location.hash);
+    show(fromHash >= 0 ? fromHash : byTitle.get(norm("The Dark Knight")) ?? 0);
+  }).catch(() => { $("loading").textContent = "Could not load the movie list. Reload the page to try again."; });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "original (count, unweighted)": {
+    "genre_overlap@10": 0.885,
+    "same_director_hit@10": 0.151,
+    "mean_rating@10": 5.99
+  },
+  "tf-idf, weighted fields": {
+    "genre_overlap@10": 0.905,
+    "same_director_hit@10": 0.817,
+    "mean_rating@10": 5.99
+  },
+  "tf-idf, weighted fields + quality re-rank": {
+    "genre_overlap@10": 0.905,
+    "same_director_hit@10": 0.816,
+    "mean_rating@10": 6.13
+  }
+}
